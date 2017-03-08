@@ -40,6 +40,11 @@ func New(clientKey, secret, callbackURL string, scopes ...string) *Provider {
 	authURL := fmt.Sprintf("https://%s%s", domain, authPath)
 	userAPIEndpoint := fmt.Sprintf("https://%s%s", domain, userAPIPath)
 
+	return NewCustomisedURL(clientKey, secret, callbackURL, authURL, tokenURL, userAPIEndpoint, scopes...)
+}
+
+// NewCustomisedURL is similar to New(...) but can be used to set custom URLs to connect to
+func NewCustomisedURL(clientKey, secret, callbackURL, authURL, tokenURL, userAPIEndpoint string, scopes ...string) *Provider {
 	p := &Provider{
 		ClientKey:       clientKey,
 		Secret:          secret,
@@ -105,6 +110,11 @@ func (p *Provider) FetchUser(session goth.Session) (goth.User, error) {
 		Provider:    p.Name(),
 	}
 
+	if user.AccessToken == "" {
+		// data is not yet retrieved since accessToken is still empty
+		return user, fmt.Errorf("%s cannot get user information without accessToken", p.providerName)
+	}
+
 	response, err := p.Client().Get(p.UserAPIEndpoint + "?access_token=" + url.QueryEscape(sess.AccessToken))
 
 	if err != nil {
@@ -114,6 +124,10 @@ func (p *Provider) FetchUser(session goth.Session) (goth.User, error) {
 		return user, err
 	}
 	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return user, fmt.Errorf("%s responded with a %d trying to fetch user information", p.providerName, response.StatusCode)
+	}
 
 	bits, err := ioutil.ReadAll(response.Body)
 	if err != nil {
